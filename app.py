@@ -1,43 +1,41 @@
+import os
 import requests
 import telebot
-import os
 
-# === Настройки (замени токены на свои в Render) ===
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")   # токен от BotFather
-HF_API_KEY = os.getenv("HF_API_KEY")           # токен от HuggingFace
-HF_MODEL = os.getenv("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.2")
-SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "Ты дружелюбный помощник. Отвечай понятно и по шагам.")
-MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", "400"))
+# Токены из переменных окружения (Render -> Environment Variables)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
-bot = telebot.TeleBot(TELEGRAM_TOKEN, parse_mode="HTML")
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-def hf_generate(user_text: str) -> str:
-    url = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    prompt = f"{SYSTEM_PROMPT}\n\nПользователь: {user_text}\nАссистент:"
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": MAX_NEW_TOKENS,
-            "temperature": 0.7,
-            "return_full_text": False
-        }
-    }
-    r = requests.post(url, headers=headers, json=payload, timeout=120)
-    data = r.json()
-    if isinstance(data, list) and data and "generated_text" in data[0]:
-        return data[0]["generated_text"].strip()
-    return "⚠️ Ошибка ответа. Попробуй ещё раз."
+# Hugging Face endpoint (можно заменить на другую модель, например gpt2, mistralai/Mistral-7B-Instruct-v0.2 и др.)
+API_URL = "https://api-inference.huggingface.co/models/gpt2"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+
+def ask_huggingface(text):
+    payload = {"inputs": text}
+    response = requests.post(API_URL, headers=headers, json=payload)
+    try:
+        data = response.json()
+        if isinstance(data, list) and "generated_text" in data[0]:
+            return data[0]["generated_text"]
+        elif isinstance(data, dict) and "error" in data:
+            return "⚠️ Ошибка модели: " + data["error"]
+        else:
+            return "🤖 Не понял ответа от модели."
+    except Exception as e:
+        return "⚠️ Ошибка: " + str(e)
 
 @bot.message_handler(commands=["start"])
 def start(message):
-    bot.reply_to(message, "Привет! Я твой AI-бот 🤖 Напиши вопрос!")
+    bot.reply_to(message, "Привет 👋 Я твой ИИ-бот! Напиши что-нибудь.")
 
-@bot.message_handler(func=lambda m: True)
+@bot.message_handler(func=lambda message: True)
 def reply(message):
+    user_input = message.text
     bot.send_chat_action(message.chat.id, "typing")
-    answer = hf_generate(message.text)
-    bot.reply_to(message, answer)
+    answer = ask_huggingface(user_input)
+    bot.send_message(message.chat.id, answer)
 
 print("✅ Бот запущен!")
 bot.infinity_polling()
