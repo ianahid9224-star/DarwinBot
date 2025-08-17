@@ -1,41 +1,31 @@
-import os
-import requests
 import telebot
+import os
+from openai import OpenAI
 
-# Токены из переменных окружения (Render -> Environment Variables)
+# Берём ключи из переменных окружения Render
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-HF_TOKEN = os.getenv("HF_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
-
-# Hugging Face endpoint (можно заменить на другую модель, например gpt2, mistralai/Mistral-7B-Instruct-v0.2 и др.)
-API_URL = "https://api-inference.huggingface.co/models/gpt2"
-headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-
-def ask_huggingface(text):
-    payload = {"inputs": text}
-    response = requests.post(API_URL, headers=headers, json=payload)
-    try:
-        data = response.json()
-        if isinstance(data, list) and "generated_text" in data[0]:
-            return data[0]["generated_text"]
-        elif isinstance(data, dict) and "error" in data:
-            return "⚠️ Ошибка модели: " + data["error"]
-        else:
-            return "🤖 Не понял ответа от модели."
-    except Exception as e:
-        return "⚠️ Ошибка: " + str(e)
-
-@bot.message_handler(commands=["start"])
-def start(message):
-    bot.reply_to(message, "Привет 👋 Я твой ИИ-бот! Напиши что-нибудь.")
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 @bot.message_handler(func=lambda message: True)
-def reply(message):
-    user_input = message.text
-    bot.send_chat_action(message.chat.id, "typing")
-    answer = ask_huggingface(user_input)
-    bot.send_message(message.chat.id, answer)
+def chat_with_ai(message):
+    try:
+        user_text = message.text
 
-print("✅ Бот запущен!")
-bot.infinity_polling()
+        # Отправляем текст в OpenAI
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # можно gpt-4o или gpt-3.5-turbo
+            messages=[{"role": "user", "content": user_text}],
+            max_tokens=200
+        )
+
+        reply = response.choices[0].message.content
+        bot.reply_to(message, reply)
+
+    except Exception as e:
+        bot.reply_to(message, f"Ошибка: {e}")
+
+print("🤖 Бот запущен...")
+bot.polling()
